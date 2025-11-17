@@ -32,7 +32,7 @@ namespace Desdemona
              * Play a game
              * @return - Red Count - Black Count
              */
-            int startGame();
+            pair<int,int> startGame();
             int replayGame( string filename );
 
         protected:
@@ -54,9 +54,12 @@ namespace Desdemona
     {
         public:
             const OthelloPlayer& player;
-
-            TimeoutException( const OthelloPlayer& player ) throw():
-                player( player ) {}
+		int red, black;
+            TimeoutException( const OthelloPlayer& player, int a, int b ) throw():
+                player( player ) {
+			black = a;
+			red = b;
+		}
             ~TimeoutException() throw() {}
 
             const char* what() 
@@ -69,9 +72,13 @@ namespace Desdemona
     {
         public:
             const OthelloPlayer& player;
+		int red, black;
 
-            BotInvalidMoveException( const OthelloPlayer& player, const Move& move ) throw():
-                InvalidMoveException( move ), player( player ) {}
+            BotInvalidMoveException( const OthelloPlayer& player, const Move& move, int a, int b ) throw():
+                InvalidMoveException( move ), player( player ) {
+			black = a;
+			red = b;
+		}
             ~BotInvalidMoveException() throw() {}
 
             const char* what() 

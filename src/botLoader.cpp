@@ -43,7 +43,8 @@ OthelloPlayer* loadBot( string botPath, Turn turn )
     if( botMod == NULL )
     {
         char* error = dlerror();
-        cerr << error << endl;
+        //cerr << error << endl;
+	cout<<"0\n0\n";
         // "Could not load bot";
         throw exception();
         //throw InvalidBotModule( "Could not load bot" );

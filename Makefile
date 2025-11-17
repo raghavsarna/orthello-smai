@@ -12,6 +12,7 @@ SRCFILES=include/ misc/ src/ tests/ Doxyfile Makefile README
 DISTFILES=bin/desdemona tests/ doc/ README
 
 CFLAGS += -pthread
+#LDFLAGS += -ldl -lpthread -lrt -pthread
 LDFLAGS += -ldl -lpthread -lrt -pthread
 
 OTHELLO_LIB_OBJS=obj/Othello.o obj/OthelloBoard.o obj/LoggedOthelloGame.o obj/OthelloGame.o obj/OthelloPlayer.o obj/botLoader.o
@@ -21,11 +22,11 @@ all: $(TARGETS)
 
 bin/Desdemona: ${OBJS}
 	if [ ! -e lib ]; then mkdir lib; fi;
-	$(CC) $(LDFLAGS) $^ -o $@
+	$(CC) $^ -o $@ $(LDFLAGS)
 
 lib/libOthello.so: $(OTHELLO_LIB_OBJS)
 	if [ ! -e lib ]; then mkdir lib; fi;
-	$(CC) $(LDFLAGS) -shared -Wl,-soname,$@.1 -o $@ $^ -lc
+	$(CC) $(LDFLAGS) -shared -Wl,-soname,$@.1 -o $@ $^ -lc -lrt
 
 # Pattern to build obj files from src files
 ${OBJS}: obj/%.o : src/%.cpp 

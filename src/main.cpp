@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <cstdio>
 #include <string>
+#include <utility>
 
 #include "Othello.h"
 #include "OthelloGame.h"
@@ -142,7 +143,7 @@ static void runGame( string blackBotPath, string redBotPath )
 
     try
     {
-        int margin = game.startGame();
+        /*int margin = game.startGame();
 
         if( margin == 0 )
         {
@@ -154,12 +155,31 @@ static void runGame( string blackBotPath, string redBotPath )
             cerr << "[Win]: " + playerStr << endl;
         }
         
-        cout << margin << endl;
+        cout << margin << endl;*/
+
+	pair<int,int> coins_of_both = game.startGame();
+
+        if( (coins_of_both.first - coins_of_both.second)  == 0 )
+        {
+            cerr << "[Draw]" << endl;
+        }
+        else
+        {
+            string playerStr =( ( coins_of_both.first - coins_of_both.second) > 0 ) ? "Black" : "Red";
+            cerr << "[Win]: " + playerStr << endl;
+        }
+	
+	cout << coins_of_both.first << endl;        
+	cout << coins_of_both.second << endl;
+        cout << (coins_of_both.first - coins_of_both.second) << endl;
+
     }
     catch( BotInvalidMoveException& e )
     {
         string playerStr = (e.player.turn == BLACK) ? "Black" : "Red" ;
         cerr << "[Invalid Move]: " << playerStr << endl;
+	cout << e.black << endl;        
+	cout << e.red << endl;
         if( e.player.turn == BLACK )
         {
             cout << "DQ1" << endl;
@@ -173,7 +193,9 @@ static void runGame( string blackBotPath, string redBotPath )
     {
         string playerStr = (e.player.turn == BLACK) ? "Black" : "Red" ;
         cerr << "[Timeout]: " << playerStr << endl;
-        if( e.player.turn == BLACK )
+	cout << e.black << endl;        
+	cout << e.red << endl;        
+	if( e.player.turn == BLACK )
         {
             cout << "TO1" << endl;
         }
@@ -186,6 +208,8 @@ static void runGame( string blackBotPath, string redBotPath )
     {
         string playerStr = (e.player.turn == BLACK) ? "Black" : "Red" ;
         cerr << "[Unhandled Exception]: " << playerStr << endl;
+	cout << "0" << endl;        
+	cout << "0" << endl;
         if( e.player.turn == BLACK )
         {
             cout << "CR1" << endl;
@@ -197,6 +221,8 @@ static void runGame( string blackBotPath, string redBotPath )
     }
     catch( exception& e )
     {
+	cout << "0" << endl;        
+	cout << "0" << endl;
         cout << "ERR" << endl;
     }
 }

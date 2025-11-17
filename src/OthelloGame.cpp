@@ -8,6 +8,7 @@
 #include <fstream>
 #include <cerrno>
 
+#include <unistd.h>
 #include <time.h>
 #include <signal.h>
 #include <sys/types.h>
@@ -70,7 +71,7 @@ void OthelloGame::printState()
 
 }
 
-int OthelloGame::startGame()
+pair<int,int> OthelloGame::startGame()
 {
     printState();
 
@@ -102,8 +103,8 @@ int OthelloGame::startGame()
             }
             catch( InvalidMoveException& e )
             {
-                OthelloPlayer& player = (turn == BLACK) ? player1 : player2;
-                throw BotInvalidMoveException( player, e.move );
+                OthelloPlayer& player = (turn == BLACK) ? player1 : player2; 
+		throw BotInvalidMoveException( player, e.move, board.getBlackCount() , board.getRedCount() );
             }
         }
         else
@@ -118,8 +119,14 @@ int OthelloGame::startGame()
     } while( !isGameOver() );
 
     cerr << "Game Over" << endl;
+    //cout<<"Black Coins "<< board.getBlackCount()<<endl;
+    //cout<<"Red Coins "<< board.getRedCount()<<endl;
 
-    return board.getBlackCount() - board.getRedCount();
+    pair<int,int> p;
+    p.first = board.getBlackCount();
+    p.second = board.getRedCount();
+    return p;
+    //return board.getBlackCount() - board.getRedCount();
 }
 
 int OthelloGame::replayGame( string filename )
@@ -149,12 +156,15 @@ int OthelloGame::replayGame( string filename )
         catch( InvalidMoveException& e )
         {
             OthelloPlayer& player = (turn == BLACK) ? player1 : player2;
-            throw BotInvalidMoveException( player, e.move );
+            throw BotInvalidMoveException( player, e.move, board.getBlackCount() , board.getRedCount() );
         }
     }
     printState();
     input.close();
     
+    //cout<<"Black Coins "<< board.getBlackCount()<<endl;
+    //cout<<"Red Coins "<< board.getRedCount()<<endl;
+
     return board.getBlackCount() - board.getRedCount();
 }
 
@@ -321,7 +331,7 @@ static Move launchEnvironment( OthelloPlayer& player, OthelloBoard& board )
     switch( environ.flags )
     {
         case EFLAGS_TIMEOUT:
-            throw TimeoutException( environ.player );
+            throw TimeoutException( environ.player,  board.getBlackCount() , board.getRedCount() );
             break;
         case EFLAGS_UNHANDLED:
             throw BotException( environ.player );
