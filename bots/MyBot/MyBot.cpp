@@ -38,10 +38,22 @@ private:
     int getMobility(const OthelloBoard &board, Turn turn);
     int getCornerControl(const OthelloBoard &board, Turn turn);
     int getCoinParity(const OthelloBoard &board, Turn turn);
+    int getFrontierDiscs(const OthelloBoard &board, Turn turn);
+    int countValidMoves(const OthelloBoard &board, Turn turn);
     
-    // Minimax with alpha-beta pruning
-    int minimax(OthelloBoard board, int depth, int alpha, int beta, bool isMaximizing, Turn currentTurn);
+    // PVS with Iterative Deepening
+    int pvs(OthelloBoard board, int depth, int alpha, int beta, Turn currentTurn);
     Move getBestMove(const OthelloBoard &board, int depth);
+    
+    // Move ordering
+    struct ScoredMove {
+        Move move;
+        int score;
+        bool operator<(const ScoredMove& other) const {
+            return score > other.score; // Descending order
+        }
+    };
+    std::vector<ScoredMove> getSortedMoves(const OthelloBoard& board, Turn turn);
 };
 
 // Positional weights - corners are most valuable, edges strategic, avoid X and C squares near empty corners
@@ -57,7 +69,7 @@ const int MyBot::WEIGHTS[8][8] = {
 };
 
 MyBot::MyBot(Turn turn)
-    : OthelloPlayer(turn), timeLimit(1.8), timeExpired(false)
+    : OthelloPlayer(turn), timeLimit(1.90), timeExpired(false)
 {
 }
 
@@ -97,12 +109,76 @@ int MyBot::getCornerControl(const OthelloBoard &board, Turn turn)
     return 100 * (myCorners - oppCorners) / (myCorners + oppCorners);
 }
 
+int MyBot::countValidMoves(const OthelloBoard& board, Turn turn) {
+    int count = 0;
+    Turn opponent = (turn == BLACK) ? RED : BLACK;
+    int dirs[8][2] = {{0,1}, {1,1}, {1,0}, {1,-1}, {0,-1}, {-1,-1}, {-1,0}, {-1,1}};
+
+    for(int i=0; i<8; i++) {
+        for(int j=0; j<8; j++) {
+            if(board.get(i, j) != EMPTY) continue;
+            
+            bool valid = false;
+            for(int k=0; k<8; k++) {
+                int x = i + dirs[k][0];
+                int y = j + dirs[k][1];
+                
+                if(x >= 0 && x < 8 && y >= 0 && y < 8 && board.get(x, y) == opponent) {
+                    while(true) {
+                        x += dirs[k][0];
+                        y += dirs[k][1];
+                        if(x < 0 || x >= 8 || y < 0 || y >= 8 || board.get(x, y) == EMPTY) break;
+                        if(board.get(x, y) == turn) {
+                            valid = true;
+                            break;
+                        }
+                    }
+                }
+                if(valid) break;
+            }
+            if(valid) count++;
+        }
+    }
+    return count;
+}
+
+int MyBot::getFrontierDiscs(const OthelloBoard& board, Turn turn) {
+    int myFrontier = 0;
+    int oppFrontier = 0;
+    int dirs[8][2] = {{0,1}, {1,1}, {1,0}, {1,-1}, {0,-1}, {-1,-1}, {-1,0}, {-1,1}};
+    
+    for(int i=0; i<8; i++) {
+        for(int j=0; j<8; j++) {
+            Coin c = board.get(i, j);
+            if(c == EMPTY) continue;
+            
+            bool isFrontier = false;
+            for(int k=0; k<8; k++) {
+                int x = i + dirs[k][0];
+                int y = j + dirs[k][1];
+                if(x >= 0 && x < 8 && y >= 0 && y < 8 && board.get(x, y) == EMPTY) {
+                    isFrontier = true;
+                    break;
+                }
+            }
+            
+            if(isFrontier) {
+                if(c == turn) myFrontier++;
+                else oppFrontier++;
+            }
+        }
+    }
+    
+    if (myFrontier + oppFrontier == 0) return 0;
+    return 100 * (oppFrontier - myFrontier) / (myFrontier + oppFrontier);
+}
+
 int MyBot::getMobility(const OthelloBoard &board, Turn turn)
 {
     Turn opponent = (turn == BLACK) ? RED : BLACK;
     
-    int myMoves = board.getValidMoves(turn).size();
-    int oppMoves = board.getValidMoves(opponent).size();
+    int myMoves = countValidMoves(board, turn);
+    int oppMoves = countValidMoves(board, opponent);
     
     if (myMoves + oppMoves == 0) return 0;
     return 100 * (myMoves - oppMoves) / (myMoves + oppMoves);
@@ -145,8 +221,9 @@ int MyBot::evaluateBoard(const OthelloBoard &board, Turn turn)
     // Different strategies for different game phases
     if (totalCoins < 20) // Early game - focus on mobility and position
     {
-        score += getMobility(board, turn) * 5;
-        score += getCornerControl(board, turn) * 30;
+        score += getMobility(board, turn) * 20;
+        score += getCornerControl(board, turn) * 500;
+        score += getFrontierDiscs(board, turn) * 10;
         
         // Positional weights
         int posScore = 0;
@@ -164,10 +241,11 @@ int MyBot::evaluateBoard(const OthelloBoard &board, Turn turn)
     }
     else if (totalCoins < 50) // Mid game - balance everything
     {
-        score += getMobility(board, turn) * 3;
-        score += getCornerControl(board, turn) * 25;
-        score += getStability(board, turn) * 2;
-        score += getCoinParity(board, turn);
+        score += getMobility(board, turn) * 10;
+        score += getCornerControl(board, turn) * 500;
+        score += getStability(board, turn) * 50;
+        score += getFrontierDiscs(board, turn) * 10;
+        score += getCoinParity(board, turn) * 5;
         
         // Positional weights with reduced importance
         int posScore = 0;
@@ -181,19 +259,36 @@ int MyBot::evaluateBoard(const OthelloBoard &board, Turn turn)
                     posScore -= WEIGHTS[i][j];
             }
         }
-        score += posScore / 2;
+        score += posScore;
     }
     else // End game - maximize coin count
     {
-        score += getCoinParity(board, turn) * 10;
-        score += getCornerControl(board, turn) * 15;
-        score += getMobility(board, turn);
+        score += getCoinParity(board, turn) * 500;
+        score += getCornerControl(board, turn) * 500;
+        score += getMobility(board, turn) * 10;
     }
     
     return score;
 }
 
-int MyBot::minimax(OthelloBoard board, int depth, int alpha, int beta, bool isMaximizing, Turn currentTurn)
+std::vector<MyBot::ScoredMove> MyBot::getSortedMoves(const OthelloBoard& board, Turn turn) {
+    list<Move> moves = board.getValidMoves(turn);
+    std::vector<ScoredMove> scoredMoves;
+    
+    for (list<Move>::iterator it = moves.begin(); it != moves.end(); ++it) {
+        OthelloBoard nextBoard = board;
+        nextBoard.makeMove(turn, *it);
+        // Simple static evaluation for sorting
+        int score = evaluateBoard(nextBoard, turn);
+        scoredMoves.push_back({*it, score});
+    }
+    
+    // Sort moves to try best ones first
+    std::sort(scoredMoves.begin(), scoredMoves.end());
+    return scoredMoves;
+}
+
+int MyBot::pvs(OthelloBoard board, int depth, int alpha, int beta, Turn currentTurn)
 {
     // Check time limit
     if (getCurrentTime() - startTime > timeLimit)
@@ -203,12 +298,12 @@ int MyBot::minimax(OthelloBoard board, int depth, int alpha, int beta, bool isMa
     }
     
     // Base case
-    if (depth == 0 || timeExpired)
+    if (depth == 0)
     {
-        return evaluateBoard(board, turn);
+        return evaluateBoard(board, currentTurn);
     }
     
-    list<Move> moves = board.getValidMoves(currentTurn);
+    std::vector<ScoredMove> moves = getSortedMoves(board, currentTurn);
     
     // No valid moves - pass turn
     if (moves.empty())
@@ -219,80 +314,97 @@ int MyBot::minimax(OthelloBoard board, int depth, int alpha, int beta, bool isMa
         // Game over - both players can't move
         if (oppMoves.empty())
         {
-            return evaluateBoard(board, turn);
+            // Return final score from perspective of currentTurn
+            // If currentTurn wins, positive. If loses, negative.
+            int myCount = (currentTurn == BLACK) ? board.getBlackCount() : board.getRedCount();
+            int oppCount = (currentTurn == BLACK) ? board.getRedCount() : board.getBlackCount();
+            if (myCount > oppCount) return 10000 + (myCount - oppCount);
+            if (myCount < oppCount) return -10000 + (myCount - oppCount);
+            return 0;
         }
         
         // Pass turn to opponent
-        return minimax(board, depth - 1, alpha, beta, !isMaximizing, nextTurn);
+        // Negamax: -pvs(..., -beta, -alpha, nextTurn)
+        return -pvs(board, depth - 1, -beta, -alpha, nextTurn);
     }
     
-    if (isMaximizing)
+    for (size_t i = 0; i < moves.size(); ++i)
     {
-        int maxEval = numeric_limits<int>::min();
-        for (list<Move>::iterator it = moves.begin(); it != moves.end() && !timeExpired; ++it)
+        OthelloBoard newBoard = board;
+        newBoard.makeMove(currentTurn, moves[i].move);
+        Turn nextTurn = (currentTurn == BLACK) ? RED : BLACK;
+        
+        int score;
+        if (i == 0)
         {
-            OthelloBoard newBoard = board;
-            newBoard.makeMove(currentTurn, *it);
-            
-            Turn nextTurn = (currentTurn == BLACK) ? RED : BLACK;
-            int eval = minimax(newBoard, depth - 1, alpha, beta, false, nextTurn);
-            
-            maxEval = max(maxEval, eval);
-            alpha = max(alpha, eval);
-            
-            if (beta <= alpha)
-                break; // Alpha-beta pruning
+            // First move: full window search
+            score = -pvs(newBoard, depth - 1, -beta, -alpha, nextTurn);
         }
-        return maxEval;
-    }
-    else
-    {
-        int minEval = numeric_limits<int>::max();
-        for (list<Move>::iterator it = moves.begin(); it != moves.end() && !timeExpired; ++it)
+        else
         {
-            OthelloBoard newBoard = board;
-            newBoard.makeMove(currentTurn, *it);
+            // Subsequent moves: null window search
+            score = -pvs(newBoard, depth - 1, -alpha - 1, -alpha, nextTurn);
             
-            Turn nextTurn = (currentTurn == BLACK) ? RED : BLACK;
-            int eval = minimax(newBoard, depth - 1, alpha, beta, true, nextTurn);
-            
-            minEval = min(minEval, eval);
-            beta = min(beta, eval);
-            
-            if (beta <= alpha)
-                break; // Alpha-beta pruning
+            // If this move is better than alpha but within bounds, re-search with full window
+            if (alpha < score && score < beta && !timeExpired)
+            {
+                score = -pvs(newBoard, depth - 1, -beta, -score, nextTurn);
+            }
         }
-        return minEval;
+        
+        if (timeExpired) return 0;
+        
+        alpha = max(alpha, score);
+        if (alpha >= beta)
+        {
+            break; // Beta cut-off
+        }
     }
+    
+    return alpha;
 }
 
 Move MyBot::getBestMove(const OthelloBoard &board, int depth)
 {
-    list<Move> moves = board.getValidMoves(turn);
+    std::vector<ScoredMove> moves = getSortedMoves(board, turn);
     
     if (moves.empty())
         return Move::pass();
     
     if (moves.size() == 1)
-        return moves.front();
+        return moves[0].move;
     
-    Move bestMove = moves.front();
+    Move bestMove = moves[0].move;
     int bestScore = numeric_limits<int>::min();
+    int alpha = numeric_limits<int>::min();
+    int beta = numeric_limits<int>::max();
     
-    for (list<Move>::iterator it = moves.begin(); it != moves.end() && !timeExpired; ++it)
+    for (size_t i = 0; i < moves.size(); ++i)
     {
         OthelloBoard newBoard = board;
-        newBoard.makeMove(turn, *it);
+        newBoard.makeMove(turn, moves[i].move);
         
         Turn opponent = (turn == BLACK) ? RED : BLACK;
-        int score = minimax(newBoard, depth - 1, numeric_limits<int>::min(), 
-                           numeric_limits<int>::max(), false, opponent);
+        
+        // Use PVS logic for the root node too
+        int score;
+        if (i == 0) {
+             score = -pvs(newBoard, depth - 1, -beta, -alpha, opponent);
+        } else {
+             score = -pvs(newBoard, depth - 1, -alpha - 1, -alpha, opponent);
+             if (alpha < score && score < beta && !timeExpired) {
+                 score = -pvs(newBoard, depth - 1, -beta, -score, opponent);
+             }
+        }
+
+        if (timeExpired) break;
         
         if (score > bestScore)
         {
             bestScore = score;
-            bestMove = *it;
+            bestMove = moves[i].move;
         }
+        alpha = max(alpha, score);
     }
     
     return bestMove;
@@ -311,27 +423,28 @@ Move MyBot::play(const OthelloBoard &board)
     if (moves.size() == 1)
         return moves.front();
     
-    // Use iterative deepening to maximize search depth within time limit
     Move bestMove = moves.front();
-    int totalCoins = board.getBlackCount() + board.getRedCount();
     
-    // Adaptive depth based on game phase
-    int maxDepth = 8;
-    if (totalCoins < 20)
-        maxDepth = 6;  // Early game - less depth needed
-    else if (totalCoins > 50)
-        maxDepth = 10; // End game - search deeper
+    // Iterative deepening
+    // Start from depth 1 to get a quick result
+    // Increase max depth since PVS is more efficient
+    int maxDepth = 64; 
     
-    for (int depth = 3; depth <= maxDepth; depth++)
+    for (int depth = 1; depth <= maxDepth; depth++)
     {
-        if (getCurrentTime() - startTime > timeLimit)
-            break;
-        
         Move move = getBestMove(board, depth);
-        if (!timeExpired)
-            bestMove = move;
-        else
+        
+        if (timeExpired)
+        {
             break;
+        }
+        else
+        {
+            bestMove = move;
+        }
+        
+        // If we found a winning line or searched deep enough, we can stop?
+        // For now, just use all available time.
     }
     
     return bestMove;
