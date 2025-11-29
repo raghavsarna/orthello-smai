@@ -2,7 +2,6 @@
  * @file MyBot.cpp
  * @author AI3002 Team
  * @date 2025-11-17
- * Competitive Othello bot using Minimax with Alpha-Beta Pruning
  */
 
 #include "Othello.h"
